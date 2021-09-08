@@ -1,0 +1,188 @@
+---
+title: "Heatmap proteome"
+geometry: margin=1cm
+numbersections: true
+output:
+  
+  
+  html_document: 
+    
+    toc: true
+    toc_depth: 5
+    theme: "yeti"
+    highlight: zenburn
+    code_folding: show
+  fig_caption: true
+  keep_tex: true
+editor_options: 
+  
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+
+library(knitr)
+
+options(width = 300)
+options(encoding = 'UTF-8')
+
+knitr::opts_chunk$set(
+  fig.width = 7,
+  fig.height = 5,
+  fig.align = "center",
+  fig.show="asis",
+  size = "tiny",
+  include = TRUE,
+  echo = TRUE,
+  eval = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  results="asis"
+  )
+
+```
+
+# Chargement des librairies
+
+```{r}
+
+library(pheatmap)
+
+library(RColorBrewer)
+
+```
+
+
+# Import des donnees
+
+selection de 214 proteines
+
+```{r}
+
+table1<-read.table("C:/Users/Gardette/Documents/APT/2A/Big Data/Proteome/proteome_Ath_selection.csv", sep=";", dec=".", header=T,row.names=1)
+
+```
+
+
+# Transformation des donnees
+
+```{r}
+
+table1 <- scale(table1)
+
+```
+
+
+# Preparation de la heatmap
+
+```{r}
+
+groupe <- rep(c("Low","Medium","Elevated"),each=3)
+
+sample_group <- data.frame(groupe = groupe)
+
+row.names(sample_group) <- row.names(table1)
+
+my_colour = list(
+  groupe = c(
+    "Low" = "lightblue",
+    "Medium" = "lightgreen",
+    "Elevated" = "orange"))
+
+
+```
+
+
+# Heatmap
+
+```{r}
+
+my_heatmap <- 
+pheatmap(
+  as.matrix(table1),
+  color = colorRampPalette(rev(brewer.pal(
+    n = 11, name = "RdYlBu"
+  )))(100),
+  clustering_method = "ward.D2",
+  annotation_row = sample_group,
+  annotation_colors = my_colour,
+  cutree_rows = 3,
+  cutree_cols = 4,
+  show_colnames = F,
+  main = "Heatmap proteome 214 variables",
+  cex = 1,
+  border_color = "black"
+)
+
+
+```
+
+
+
+# Analyse de la heatmap : variables
+
+```{r}
+
+cluster_heatmap <- cutree(my_heatmap$tree_col, k=4)
+
+# codification initiale des clusters
+
+length(cluster_heatmap[cluster_heatmap==1]) # 79 : cluster 4
+length(cluster_heatmap[cluster_heatmap==2]) # 93 : cluster 2
+length(cluster_heatmap[cluster_heatmap==3]) # 26 : cluster 3
+length(cluster_heatmap[cluster_heatmap==4]) # 16 : cluster 1
+
+
+# conversion des n° de clusters pour qu'ils coincident avec les clusters de gauche à droite sur le graphe
+
+x<- cluster_heatmap
+
+y=NULL
+
+for (i in 1:length(x)) {
+  
+  val <- x[i]
+  
+  if (val==1) {y[i] <- 4}
+  else if (val==2){y[i] <- 2}
+  else if (val==3){y[i] <- 3}
+  else {y[i] <- 1}
+  
+}
+
+names(y) <- names(x)
+
+
+# export de l'appartenance des variables aux clusters
+
+write.table(y,"appartenances_clusters_heatmap_proteome.csv",append=F,sep=";",dec=".",row.names=T,col.names=NA)
+
+
+# composition des clusters
+
+# cluster 1
+
+length(y[y==1])
+
+names(y[y==1])
+
+# cluster 2
+
+length(y[y==2])
+
+names(y[y==2])
+
+# cluster 3
+
+length(y[y==3])
+
+names(y[y==3])
+
+# cluster 4
+
+length(y[y==4])
+
+names(y[y==4])
+
+```

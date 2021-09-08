@@ -1,0 +1,215 @@
+%\VignetteIndexEntry{MultiVarSel Vignette}
+%\VignettePackage{MultiVarSel}
+\documentclass[11pt]{article}
+
+\SweaveOpts{eps=FALSE,echo=TRUE,png=TRUE,pdf=FALSE,figs.only=TRUE}
+\usepackage{times}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[colorlinks=TRUE,urlcolor=blue,citecolor=blue]{hyperref}
+\usepackage{subfigure}
+\usepackage{amsmath}
+
+
+\newcommand{\Rfunction}[1]{{\texttt{#1}}}
+\newcommand{\Robject}[1]{{\texttt{#1}}}
+\newcommand{\Rpackage}[1]{{\textit{#1}}}
+\newcommand{\Rmethod}[1]{{\texttt{#1}}}
+\newcommand{\Rfunarg}[1]{{\texttt{#1}}}
+\newcommand{\Rclass}[1]{{\textit{#1}}}
+\newcommand{\Rcode}[1]{{\texttt{#1}}}
+\newcommand{\software}[1]{\textsf{#1}}
+\newcommand{\R}{\software{R}}
+\newcommand{\MultiVarSel}{\textsf{MultiVarSel}}
+
+
+\textwidth=6.2in
+\textheight=8.5in
+\oddsidemargin=0.2in
+\evensidemargin=0.2in
+\headheight=0in
+\headsep=0in
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+\title{\textsf{MultiVarSel}: Package for variable selection in high-dimensional general linear models}
+\author{M. Perrot-Dock\`es, C. L\'evy-Leduc and J. Chiquet}
+\date{\today}
+\maketitle
+
+<<echo=FALSE>>=
+options(width=60)
+@ 
+
+
+This vignette explains how to use the package \textsf{MultiVarSel}  which is dedicated
+to the variable selection in high-dimensional general linear models by taking into account
+the dependence that may exist between the columns of the observations matrix. For further details
+on the methodology we refer the reader to [1].
+
+After having installed the package in \R, the package has to be loaded
+by using the following instruction:
+%  
+<<loadparameters>>=  
+library(MultiVarSel)
+@
+% 
+
+In the following, we shall explain how to analyze the \verb|copals_camera| dataset provided within 
+the package. 
+
+To load this data set, type
+
+
+<<loaddata>>=
+data("copals_camera")
+dim(copals_camera)
+#### We limit ourselves to the following data
+copals = copals_camera[copals_camera$Include == 1, -1]
+@
+
+We extract the data matrices
+<<extraction>>=
+Y  <- as.matrix(copals[, -(1:2)])
+X1 <- copals[,   1]
+X2 <- copals[,   2]
+@
+
+We remove individuals with class 1155 and 1551 which are isolated
+<<remove>>=
+rm <- which(X1 %in% c("1155","1551"))
+Y <- Y[-rm, ]  
+X1 <- X1[-rm]; X1 <- factor(as.character(X1))
+X2 <- X2[-rm]; X2 <- factor(as.character(X2))
+@
+
+
+According to the following table, the problem is in fact a simple one-way MANOVA
+<<table>>=
+table(X1,X2)
+## -> X1 is useless => We have a one-way MANOVA model with 3 levels
+@
+
+
+We build the design matrix
+<<design>>=
+X <- model.matrix(lm(Y ~ X2 + 0))
+p <- ncol(X)
+n=nrow(X)
+n
+q=dim(Y)[2] 
+q
+@
+
+
+We scale the $\boldsymbol{Y}$ matrix
+
+<<scale>>=
+Yscaled=scale(Y)
+Y=Yscaled
+@
+
+In the following, in order to speed up the computations, we only focus on the first 200 columns of $\boldsymbol{Y}$
+
+<<truncate>>=
+Y=Y[,1:200]
+@
+
+
+The residuals are defined as follows:
+<<residuals>>=
+residuals=lm(as.matrix(Y)~X-1)$residuals
+@
+
+We apply the whitening test to this residuals matrix in order to know if it is useful to whiten the observations or not
+<<test>>=
+pvalue=whitening_test(residuals)
+pvalue
+@
+
+Whitening is useful since the $p$-value is smaller than 0.05.
+
+In order to select the type of dependence that is the most adapted to the data we apply the \verb|whitening_choice| function
+<<whitheningchoice>>=
+result=whitening_choice(residuals,c("AR1","nonparam","ARMA"),pAR=1,qMA=1)
+result
+@
+
+The non parametric choice has the highest $p$-value. We select this dependence to model the residuals.
+
+We compute the square root of the inverse of the estimator of the covariance matrix of each row of the residuals matrix using the non parametric modelling as follows:
+<<sigmahat>>=
+ square_root_inv_hat_Sigma=whitening(residuals,"nonparam",pAR=1,qMA=0)
+@
+
+
+We then applied the variable selection technique. 
+Here, in order to provide an example having a low computational burden, we only applied the 
+stability selection with 100 replications. We suggest to the reader to take at least 500 replicates to have a robust result.
+
+<<variable_selection>>=
+  Frequencies=variable_selection(Y,X,square_root_inv_hat_Sigma,
+                                 nb_repli=100,parallel=FALSE)
+@
+
+Parallel computing is also supported by the function \verb|variable_selection|. To make it work, users must 
+download the package \textsf{doMC} which is not available on Windows platforms (it is on others).
+
+<<variable_selection,echo=TRUE,eval=FALSE>>=
+require(doMC)
+registerDoMC(cores=4)
+Freqs=variable_selection(Y,X,square_root_inv_hat_Sigma,
+                    nb_repli=10,parallel=TRUE,nb.cores=4)
+@
+
+
+This function provides the selection frequencies of the variables for the different levels of the qualitative variable. 
+
+To display the positions of the metabolites that are selected with a frequency larger than 95\%, the following code
+can be used.
+
+
+\begin{center}
+<<label=figure1, fig=TRUE,echo=TRUE>>=
+colnames(Frequencies)<-c('Names_of_Y','Names_of_X','frequency')
+# Here we can consider the names of Y as numerical since they correspond 
+# to the ratio m/z of the metabolites.
+Frequencies$Names_of_X<-sub('X2','',Frequencies$Names_of_X)
+Frequencies$Names_of_Y<-as.numeric(gsub('X','',gsub('\\.1$','',Frequencies$Names_of_Y)))
+p<-ggplot(data=Frequencies[Frequencies$frequency>=0.95,],
+          aes(x=Names_of_Y,y=Names_of_X,color=frequency))+
+          geom_tile(size=0.75)+scale_color_gradient2(midpoint=0.95,mid ='orange')+
+          theme_bw()+ylab('Levels of X')+xlab('m/z')
+p
+@
+\end{center}
+
+To avoid false postive we only consider the variables that are always selected (with a frequency equal to one)
+
+\begin{center}
+<<label=figure2, fig=TRUE,echo=TRUE>>=
+p<-ggplot(data=Frequencies[Frequencies$frequency==1,],
+          aes(x=Names_of_Y,y=Names_of_X,color=Names_of_X))+
+          geom_point(size=1)+theme_bw()+ylab('Levels of X')+xlab('m/z')
+p
+@
+\end{center}
+
+Since the number of replications that we have chosen here is very low, the result is not very sparse. For 
+results with larger number of replications we refer the reader to [1].
+
+Hereafter, we also provide some information about the R session
+
+<<sessionInfo>>=
+sessionInfo()
+@
+
+\section*{References}
+
+[1] M. Perrot-Dockes et al. "A multivariate variable selection approach 
+for analyzing LC-MS metabolomics data", arXiv:1704.00076
+
+% \bibliographystyle{plain}  			% Style BST file
+% \bibliography{vignette_refs}    	% Bibliography file (usually '*.bib' ) 
+
+\end{document}

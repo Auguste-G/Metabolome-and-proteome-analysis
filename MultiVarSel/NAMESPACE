@@ -1,0 +1,5 @@
+exportPattern("^[[:alpha:]]+")
+importFrom("stats", "ARMAacf", "ARMAtoMA", "acf", "arima", "pchisq","toeplitz")
+importFrom("parallel","mclapply")
+import('glmnet','Matrix','ggplot2')
+
